@@ -16,12 +16,12 @@ kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --par
 ```
 
 
-Execute the following script to start zookeeper and kafka, create a topic and start the producer.
+Start the producer and pass the topic name as an argument
 ```bash
-./start-producer
+python producer.py --topic access-log
 ```
 
-The messages can be viewed through
+Start the consumer to read and process the messages
 ```bash
-$KAFKA_HOME/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic avg --from-beginning
+python consumer.py
 ```
