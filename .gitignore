@@ -1,1 +1,3 @@
-src/.checkpoints
+src/consumer/.checkpoints
+src/consumer/target
+src/consumer/project
