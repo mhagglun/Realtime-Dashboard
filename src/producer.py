@@ -22,8 +22,7 @@ class Producer(threading.Thread):
 
     def run(self, topic):
         producer = KafkaProducer(bootstrap_servers='localhost:9092',
-                                 value_serializer=lambda v: json.dumps(
-                                     v).encode('utf-8'))
+                                 value_serializer=str.encode)
 
         while True:
             faker = Faker()
@@ -32,8 +31,8 @@ class Producer(threading.Thread):
 
             responseCodes = ["200", "404", "500", "403"]
 
-            requestPaths = ["POST /auth/login", "GET /index.html", "GET /images/product?itemId=%s", "GET /store/search?name=%s",
-                            "PUT /user", "POST /store/checkout?userId=%s&itemId=%s"]
+            endpoints = ["POST /auth/login", "GET /index.html", "GET /images/product?itemId=%s", "GET /store/search?name=%s",
+                         "PUT /user", "POST /store/checkout?userId=%s&itemId=%s"]
 
             productNames = ["boots", "jacket", "beanie",
                             "pants", "dresses", "suits", "hoodies", "shirts"]
@@ -46,17 +45,17 @@ class Producer(threading.Thread):
             timestamp = str(timestamp.strftime('%d/%b/%Y:%H:%M:%S'))
             timeZone = str(datetime.datetime.now(local).strftime('%z'))
 
-            path = str(np.random.choice(requestPaths, p=[
-                       0.05, 0.25, 0.3, 0.3, 0.05, 0.05]))
+            ep = str(np.random.choice(endpoints, p=[
+                0.05, 0.25, 0.3, 0.3, 0.05, 0.05]))
 
             # Format request paths when necessary
-            if "?userId=%s&itemId=%s" in path:
-                path = path % (random.randint(1000, 9999),
-                               np.random.choice(productIds))
-            elif "?itemId=%s" in path:
-                path = path % np.random.choice(productIds)
-            elif "?name=%s" in path:
-                path = path % np.random.choice(productNames)
+            if "?userId=%s&itemId=%s" in ep:
+                ep = ep % (random.randint(1000, 9999),
+                           np.random.choice(productIds))
+            elif "?itemId=%s" in ep:
+                ep = ep % np.random.choice(productIds)
+            elif "?name=%s" in ep:
+                ep = ep % np.random.choice(productNames)
 
             resp = np.random.choice(
                 responseCodes, p=[0.9, 0.04, 0.02, 0.04])
@@ -66,8 +65,8 @@ class Producer(threading.Thread):
             ua = str(np.random.choice(
                 userAgents, p=[0.5, 0.3, 0.1, 0.05, 0.05])())
 
-            message = '%s - - [%s %s] "%s %s HTTP/1.0" %s "%s"\n' % (
-                ip, timestamp, timeZone, path, resp, byteSize, str(ua))
+            message = '%s - - [%s %s] "%s HTTP/1.1" %s %s "%s"' % (
+                ip, timestamp, timeZone, ep, resp, byteSize, str(ua))
 
             producer.send(topic, message)
             print(message)
