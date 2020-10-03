@@ -1,3 +1,4 @@
 src/consumer/.checkpoints
 src/consumer/target
 src/consumer/project
+src/node/node_modules
