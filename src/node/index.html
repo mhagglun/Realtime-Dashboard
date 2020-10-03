@@ -1,0 +1,80 @@
+<html>
+  <head>
+    <script src="http://localhost:8080/socket.io/socket.io.js"></script>
+    <script src="http://code.highcharts.com/highcharts.js"></script>
+  </head>
+  <body>
+    <div
+      id="graph_container"
+      style="min-width: 400px; height: 400px; margin: 0 auto"
+    ></div>
+
+    <script>
+      // Instantiate the chart object which plots the samples.
+      var graph = new Highcharts.chart("graph_container", {
+        chart: {
+          type: "bar",
+          animation: Highcharts.svg, // don't animate in old IE
+          marginRight: 10,
+          events: {
+            load: function () {
+              // set up the updating of the chart on each sample
+              var series = this.series[0];
+              var socket = io.connect("http://localhost:8080");
+
+              socket.on("chart_data", function (samples) {
+                console.log(samples);
+                //Update series
+                let data = [];
+                for (const sample of samples) {
+                  data.push([sample.keyword, sample.count]);
+                }
+                series.setData(data);
+              });
+            },
+          },
+        },
+        title: {
+          text: "Live searches",
+        },
+        xAxis: {
+          categories: [
+            "boots",
+            "jacket",
+            "beanie",
+            "pants",
+            "dresses",
+            "suits",
+            "hoodies",
+            "shirts",
+          ],
+          title: {
+            text: null,
+          },
+        },
+        yAxis: {
+          min: 0,
+          title: {
+            text: "Searches",
+            align: "high",
+          },
+          labels: {
+            overflow: "justify",
+          },
+        },
+        legend: {
+          enabled: false,
+        },
+        exporting: {
+          enabled: false,
+        },
+        series: [
+          {
+            name: "Searches",
+            data: [0, 0, 0, 0, 0, 0, 0, 0],
+          },
+        ],
+      });
+    </script>
+  </body>
+</html>
