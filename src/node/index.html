@@ -1,17 +1,52 @@
 <html>
   <head>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+      integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z"
+      crossorigin="anonymous"
+    />
+    <script
+      src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+      integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
+      integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"
+      integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV"
+      crossorigin="anonymous"
+    ></script>
     <script src="http://localhost:8080/socket.io/socket.io.js"></script>
     <script src="http://code.highcharts.com/highcharts.js"></script>
+    <script src="https://code.highcharts.com/modules/data.js"></script>
+    <script src="https://code.highcharts.com/modules/series-label.js"></script>
+    <script src="https://code.highcharts.com/maps/modules/map.js"></script>
+    <script src="https://code.highcharts.com/mapdata/custom/world.js"></script>
   </head>
   <body>
     <div
-      id="graph_container"
-      style="min-width: 400px; height: 400px; margin: 0 auto"
+      id="world_map_container"
+      style="min-width: 400px; height: 500px; margin: 0 auto"
+    ></div>
+
+    <div
+      id="searches_container"
+      style="min-width: 400px; height: 350px; margin: 0 auto"
+    ></div>
+
+    <div
+      id="orders_container"
+      style="min-width: 400px; height: 350px; margin: 0 auto"
     ></div>
 
     <script>
       // Instantiate the chart object which plots the samples.
-      var graph = new Highcharts.chart("graph_container", {
+      var searchesGraph = new Highcharts.chart("searches_container", {
         chart: {
           type: "bar",
           animation: Highcharts.svg, // don't animate in old IE
@@ -22,8 +57,7 @@
               var series = this.series[0];
               var socket = io.connect("http://localhost:8080");
 
-              socket.on("chart_data", function (samples) {
-                console.log(samples);
+              socket.on("search_data", function (samples) {
                 //Update series
                 let data = [];
                 for (const sample of samples) {
@@ -35,7 +69,7 @@
           },
         },
         title: {
-          text: "Live searches",
+          text: "Searches",
         },
         xAxis: {
           categories: [
@@ -55,7 +89,7 @@
         yAxis: {
           min: 0,
           title: {
-            text: "Searches",
+            text: "Number of Searches",
             align: "high",
           },
           labels: {
@@ -71,7 +105,109 @@
         series: [
           {
             name: "Searches",
-            data: [0, 0, 0, 0, 0, 0, 0, 0],
+          },
+        ],
+      });
+
+      var ordersGraph = new Highcharts.chart("orders_container", {
+        chart: {
+          type: "column",
+          animation: Highcharts.svg, // don't animate in old IE
+          marginRight: 10,
+          events: {
+            load: function () {
+              // set up the updating of the chart on each sample
+              var series = this.series[0];
+              var socket = io.connect("http://localhost:8080");
+
+              socket.on("order_data", function (samples) {
+                //Update series
+                let data = [];
+                for (const sample of samples) {
+                  data.push([sample.keyword, sample.count]);
+                }
+                series.setData(data);
+              });
+            },
+          },
+        },
+        title: {
+          text: "Orders",
+        },
+        xAxis: {
+          title: {
+            text: null,
+          },
+        },
+        yAxis: {
+          min: 0,
+          title: {
+            text: "Number of Orders",
+            align: "high",
+          },
+          labels: {
+            overflow: "justify",
+          },
+        },
+        legend: {
+          enabled: false,
+        },
+        exporting: {
+          enabled: false,
+        },
+        series: [
+          {
+            name: "Searches",
+          },
+        ],
+      });
+
+      var worldmapGraph = new Highcharts.chart("world_map_container", {
+        chart: {
+          type: 'map',
+          events: {
+            load: function () {
+              // set up the updating of the chart on each sample
+              var series = this.series[0];
+              var socket = io.connect("http://localhost:8080");
+
+              socket.on("country_data", function (samples) {
+                //Update series
+                let data = [];
+                for (const sample of samples) {
+                  data.push([sample.country_code, sample.count]);
+                }
+                series.setData(data);
+              });
+            },
+          },
+        },
+
+        title: {
+          text: "Visitors by country",
+        },
+
+        mapNavigation: {
+          enabled: true,
+          buttonOptions: {
+            verticalAlign: "bottom",
+          },
+        },
+
+        colorAxis: {
+          min: 0,
+        },
+
+        series: [
+          {
+            data: [],
+            mapData: Highcharts.maps["custom/world"],
+            joinBy: "country_code",
+            name: "Visitors",
+            dataLabels: {
+              enabled: true,
+              format: "{point.name}",
+            },
           },
         ],
       });
