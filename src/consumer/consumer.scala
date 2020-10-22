@@ -22,15 +22,18 @@ import org.apache.spark.rdd.RDD
 
 object KafkaSpark {
   
-  val APACHE_ACCESS_LOG_PATTERN = """^(\S+) (\S+) (\S+) \[([\w:/]+\s[+\-]\d{4})\] "(\S+)\s?(\S+)?\s?(\S+)?\" (\d{3}|-) (\d+|-)\s?"?([^"]*)"?\s?"?([^"]*)?"?$""".r
+  val APACHE_ACCESS_LOG_PATTERN = """^(\S+) (\S+) (\S+) (\S+) \[([\w:/]+\s[+\-]\d{4})\] "(\S+)\s?(\S+)?\s?(\S+)?\" (\d{3}|-) (\d+|-)\s?"?([^"]*)"?\s?"?([^"]*)?"?$""".r
 
   val MONTH_MAP = Map("Jan" -> 1, "Feb" -> 2, "Mar" -> 3, "Apr" -> 4, "May" -> 5, "Jun" -> 6, "Jul" -> 7, "Aug" -> 8,
                       "Sep" -> 9, "Oct" -> 10, "Nov" -> 11, "Dec" -> 12)
 
+  val USERID_PATTERN = """userId=([^&#]*)"""
+  val ITEMID_PATTERN = """itemId=([^&#]*)"""
+
   // Helper classes for parsing apache logs
   case class Cal(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int)
 
-  case class Row(host: String, clientID: String, userID: String, dateTime: Cal, method: String, endpoint: String,
+  case class Row(countryCode: String, host: String, clientID: String, userID: String, dateTime: Cal, method: String, endpoint: String,
                 protocol: String, responseCode: Int, contentSize: Long, userAgent: String) 
 
   def parseApacheTime(s: String): Cal = {
@@ -44,14 +47,22 @@ object KafkaSpark {
         return (Right(logline), 0)
 
     val r = ret(0)
-    val sizeField = r.group(9)
+    val sizeField = r.group(10)
 
     var size: Long = 0
     if (sizeField != "-")
         size = sizeField.toLong
 
-    return (Left(Row(r.group(1), r.group(2), r.group(3), parseApacheTime(r.group(4)), r.group(5), r.group(6),
-                     r.group(7), r.group(8).toInt, size, r.group(10))), 1)
+    return (Left(Row(r.group(1), r.group(2), r.group(3), r.group(4), parseApacheTime(r.group(5)), r.group(6), r.group(7),
+                     r.group(8), r.group(9).toInt, size, r.group(11))), 1)
+  }
+
+  def parseQueryParam(pattern: String, endpoint: String) : String = {
+    val ret = pattern.r.findAllIn(endpoint).matchData.toList
+    val r = ret(0)
+    val param = r.group(0).split("=")(1)
+
+    return param
   }
 
   def main(args: Array[String]) {
@@ -61,10 +72,11 @@ object KafkaSpark {
     val session = cluster.connect()
     session.execute("CREATE KEYSPACE IF NOT EXISTS access_log WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.searches (keyword text PRIMARY KEY, count float);")
-    session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (word text PRIMARY KEY, count float);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (product text PRIMARY KEY, count float);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.countries (country_code text PRIMARY KEY, count float);")
 
     // Need minimum of 2 threads, one for reading input and one for processing
-    val sparkConf = new SparkConf().setAppName("KafkaSparkWordCount").setMaster("local[2]")
+    val sparkConf = new SparkConf().setAppName("DashboardConsumer").setMaster("local[2]")
     val streamingContext = new StreamingContext(sparkConf, Seconds(5))
     streamingContext.checkpoint(".checkpoints/")
 
@@ -86,9 +98,13 @@ object KafkaSpark {
     val searches = accessLogs.filter(x => x.endpoint.contains("/store/search?name="))
     val keywords = searches.map(x => (x.endpoint.split("=")(1), 1))
     
+    val orderRequests = accessLogs.filter(x => x.endpoint.contains("/store/checkout"))
+    val orders = orderRequests.map(x => (parseQueryParam(ITEMID_PATTERN, x.endpoint), 1))
+
+    val countries = accessLogs.map(x => (x.countryCode, 1))
 
     // measure the number of orders for each key in a stateful manner
-    def mapSearches(key: String, value: Option[Int], state: State[Int]): (String, Int) = {
+    def mapFunc(key: String, value: Option[Int], state: State[Int]): (String, Int) = {
       if (state.exists) {
         val oldState = state.get()
         val newState = (oldState + value.get)
@@ -101,8 +117,12 @@ object KafkaSpark {
       }
     }
 
-    val stateDstream = keywords.mapWithState(StateSpec.function(mapSearches _))
-    stateDstream.saveToCassandra("access_log", "searches", SomeColumns("keyword", "count"))
+    val searchStateDstream = keywords.mapWithState(StateSpec.function(mapFunc _))
+    val orderStateDstream = orders.mapWithState(StateSpec.function(mapFunc _))
+    val countryStateDstream = countries.mapWithState(StateSpec.function(mapFunc _))
+    searchStateDstream.saveToCassandra("access_log", "searches", SomeColumns("keyword", "count"))
+    orderStateDstream.saveToCassandra("access_log", "orders", SomeColumns("product", "count"))
+    countryStateDstream.saveToCassandra("access_log", "countries", SomeColumns("country_code", "count"))
 
     streamingContext.start()
     streamingContext.awaitTermination()

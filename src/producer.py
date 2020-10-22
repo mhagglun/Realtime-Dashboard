@@ -10,7 +10,6 @@ import numpy as np
 import random
 import logging
 import threading
-import json
 from kafka import KafkaProducer
 from faker import Faker
 from tzlocal import get_localzone
@@ -24,29 +23,29 @@ class Producer(threading.Thread):
         producer = KafkaProducer(bootstrap_servers='localhost:9092',
                                  value_serializer=str.encode)
 
+        faker = Faker()
+        responseCodes = ["200", "404", "500", "403"]
+
+        endpoints = ["POST /auth/login", "GET /index.html", "GET /images/product?itemId=%s", "GET /store/search?name=%s",
+                        "PUT /user", "POST /store/checkout?userId=%s&itemId=%s"]
+
+        productNames = ["boots", "jacket", "beanie",
+                        "pants", "dresses", "suits", "hoodies", "shirts"]
+        productIds = random.sample(range(1000, 15000), 8)
+
+        userAgents = [faker.firefox, faker.chrome, faker.safari,
+                        faker.internet_explorer, faker.opera]
+
         while True:
-            faker = Faker()
-
-            timestamp = datetime.datetime.now()
-
-            responseCodes = ["200", "404", "500", "403"]
-
-            endpoints = ["POST /auth/login", "GET /index.html", "GET /images/product?itemId=%s", "GET /store/search?name=%s",
-                         "PUT /user", "POST /store/checkout?userId=%s&itemId=%s"]
-
-            productNames = ["boots", "jacket", "beanie",
-                            "pants", "dresses", "suits", "hoodies", "shirts"]
-            productIds = random.sample(range(1000, 15000), 8)
-
-            userAgents = [faker.firefox, faker.chrome, faker.safari,
-                          faker.internet_explorer, faker.opera]
 
             ip = str(faker.ipv4())
+            location = str(faker.country_code().lower())
+            timestamp = datetime.datetime.now()
             timestamp = str(timestamp.strftime('%d/%b/%Y:%H:%M:%S'))
             timeZone = str(datetime.datetime.now(local).strftime('%z'))
 
             ep = str(np.random.choice(endpoints, p=[
-                0.05, 0.25, 0.3, 0.3, 0.05, 0.05]))
+                0.05, 0.05, 0.05, 0.4, 0.05, 0.4]))
 
             # Format request paths when necessary
             if "?userId=%s&itemId=%s" in ep:
@@ -65,14 +64,14 @@ class Producer(threading.Thread):
             ua = str(np.random.choice(
                 userAgents, p=[0.5, 0.3, 0.1, 0.05, 0.05])())
 
-            message = '%s - - [%s %s] "%s HTTP/1.1" %s %s "%s"' % (
-                ip, timestamp, timeZone, ep, resp, byteSize, str(ua))
+            message = '%s %s - - [%s %s] "%s HTTP/1.1" %s %s "%s"' % (
+                location, ip, timestamp, timeZone, ep, resp, byteSize, str(ua))
 
             producer.send(topic, message)
             print(message)
 
             # time between each send action
-            time.sleep(random.randint(1, 5))
+            # time.sleep(random.randint(1, 2))
 
 
 def main():
