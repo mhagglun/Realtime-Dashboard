@@ -11,13 +11,13 @@ import org.apache.spark.streaming.kafka._
 import org.apache.spark.storage.StorageLevel
 import java.util.{Date, Properties}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerRecord, ProducerConfig}
-import scala.util.Random
 import scala.util.matching
-
+import java.time.LocalDateTime
 import org.apache.spark.sql.cassandra._
 import com.datastax.spark.connector._
 import com.datastax.driver.core.{Session, Cluster, Host, Metadata}
 import com.datastax.spark.connector.streaming._
+import com.datastax.spark.connector.writer.{TimestampOption, TTLOption, WriteConf}
 import org.apache.spark.rdd.RDD
 
 object KafkaSpark {
@@ -74,10 +74,11 @@ object KafkaSpark {
     session.execute("CREATE TABLE IF NOT EXISTS access_log.searches (keyword text PRIMARY KEY, count float);")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (product text PRIMARY KEY, count float);")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.countries (country_code text PRIMARY KEY, count float);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.requests (id int, timestamp timestamp, count float, PRIMARY KEY (id, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
 
     // Need minimum of 2 threads, one for reading input and one for processing
     val sparkConf = new SparkConf().setAppName("DashboardConsumer").setMaster("local[2]")
-    val streamingContext = new StreamingContext(sparkConf, Seconds(5))
+    val streamingContext = new StreamingContext(sparkConf, Seconds(10))
     streamingContext.checkpoint(".checkpoints/")
 
     val kafkaConf = Map(
@@ -85,10 +86,10 @@ object KafkaSpark {
       "zookeeper.connect" -> "localhost:2181",
       "group.id" -> "kafka-spark-streaming",
       "zookeeper.connection.timeout.ms" -> "1000")
-    
-    
-    val topic = Set("access-log")
-    val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](streamingContext, kafkaConf, topic)
+
+    // Create stream from topic to read data from
+    val inputTopic = Set("access-log")
+    val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](streamingContext, kafkaConf, inputTopic)
     
     val rawLogs = messages.map(x => x._2) // Received logs are on the format (null, log)
     val parsedLogs = rawLogs.map(parseApacheLogLine _)  // Parse logs
@@ -102,6 +103,8 @@ object KafkaSpark {
     val orders = orderRequests.map(x => (parseQueryParam(ITEMID_PATTERN, x.endpoint), 1))
 
     val countries = accessLogs.map(x => (x.countryCode, 1))
+    val requestCount = accessLogs.countByWindow(Seconds(10), Seconds(10))
+    val timestampedRequestCount = requestCount.map(x => (0, LocalDateTime.now().toString, x))
 
     // measure the number of orders for each key in a stateful manner
     def mapFunc(key: String, value: Option[Int], state: State[Int]): (String, Int) = {
@@ -120,6 +123,8 @@ object KafkaSpark {
     val searchStateDstream = keywords.mapWithState(StateSpec.function(mapFunc _))
     val orderStateDstream = orders.mapWithState(StateSpec.function(mapFunc _))
     val countryStateDstream = countries.mapWithState(StateSpec.function(mapFunc _))
+
+    timestampedRequestCount.saveToCassandra("access_log", "requests", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
     searchStateDstream.saveToCassandra("access_log", "searches", SomeColumns("keyword", "count"))
     orderStateDstream.saveToCassandra("access_log", "orders", SomeColumns("product", "count"))
     countryStateDstream.saveToCassandra("access_log", "countries", SomeColumns("country_code", "count"))
