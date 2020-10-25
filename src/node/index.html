@@ -50,6 +50,7 @@
     ></div>
 
     <script>
+      var timeWindow = 10000;
       var socket = io.connect("http://localhost:8080");
 
       var requestsChart = new Highcharts.chart("requests_chart", {
@@ -62,17 +63,17 @@
               let series = this.series;
               socket.on("requests_count_data", function (data) {
                 const currentTime = new Date().getTime();
-                series.forEach(function(serie) {
-                   data.forEach(function(item) {
-                     if (item.response_code.toString() == serie.name) {
-                      let count = ( new Date(item.timestamp).getTime() + 10000 >= currentTime) ? item.count : 0;
-                      serie.addPoint(
-                        [currentTime, count],
-                        true,
-                        false
-                        );
-                      }
-                    })
+                series.forEach(function (serie) {
+                  data.forEach(function (sample) {
+                    if (sample.response_code.toString() == serie.name) {
+                      let count =
+                        new Date(sample.timestamp).getTime() + timeWindow >=
+                        currentTime
+                          ? sample.count
+                          : 0;
+                      serie.addPoint([currentTime, count], true, false);
+                    }
+                  });
                 });
               });
             },
@@ -83,7 +84,7 @@
         },
         xAxis: {
           title: {
-            text: "Date",
+            text: "Time",
           },
           type: "datetime",
           tickPixelInterval: 30,
@@ -106,7 +107,7 @@
           },
         },
         exporting: {
-          enabled: true
+          enabled: true,
         },
         series: [
           {
@@ -134,20 +135,26 @@
 
       var searchesGraph = new Highcharts.chart("searches_container", {
         chart: {
-          type: "bar",
-          animation: Highcharts.svg, // don't animate in old IE
+          zoomType: "x",
           marginRight: 10,
+          type: "column",
           events: {
             load: function () {
-              // set up the updating of the chart on each sample
-              let series = this.series[0];
-              socket.on("search_data", function (samples) {
-                //Update series
-                let data = [];
-                for (const sample of samples) {
-                  data.push([sample.keyword, sample.count]);
-                }
-                series.setData(data);
+              let series = this.series;
+              socket.on("search_data", function (data) {
+                const currentTime = new Date().getTime();
+                series.forEach(function (serie) {
+                  data.forEach(function (sample) {
+                    if (sample.keyword.toString() == serie.name) {
+                      let count =
+                        new Date(sample.timestamp).getTime() + timeWindow >=
+                        currentTime
+                          ? sample.count
+                          : 0;
+                      serie.addPoint([currentTime, count], true, false);
+                    }
+                  });
+                });
               });
             },
           },
@@ -156,62 +163,91 @@
           text: "Searches",
         },
         xAxis: {
-          categories: [
-            "boots",
-            "jacket",
-            "beanie",
-            "pants",
-            "dresses",
-            "suits",
-            "hoodies",
-            "shirts",
-          ],
           title: {
-            text: null,
+            text: "Time",
           },
+          type: "datetime",
+          tickPixelInterval: 30,
         },
         yAxis: {
           min: 0,
           title: {
-            text: "Number of Searches",
-            align: "high",
+            text: "Number of searches per store item",
           },
-          labels: {
-            overflow: "justify",
-          },
-        },
-        legend: {
-          enabled: false,
-        },
-        exporting: {
-          enabled: false,
         },
         credits: {
           enabled: false,
         },
+        time: {
+          useUTC: false,
+        },
+        plotOptions: {
+          series: {
+            stacking: "normal",
+          },
+        },
+        exporting: {
+          enabled: true,
+        },
         series: [
           {
-            name: "Searches",
+            name: "boots",
+            pointInterval: 3600,
+          },
+          {
+            name: "jacket",
+            pointInterval: 3600,
+          },
+          {
+            name: "beanie",
+            pointInterval: 3600,
+          },
+          {
+            name: "pants",
+            pointInterval: 3600,
+          },
+          {
+            name: "dresses",
+            pointInterval: 3600,
+          },
+          {
+            name: "suits",
+            pointInterval: 3600,
+          },
+          {
+            name: "hoodies",
+            pointInterval: 3600,
+          },
+          {
+            name: "shirts",
+            pointInterval: 3600,
           },
         ],
       });
 
       var ordersGraph = new Highcharts.chart("orders_container", {
         chart: {
-          type: "column",
+          type: "spline",
+          borderWidth: 1,
           animation: Highcharts.svg, // don't animate in old IE
           marginRight: 10,
           events: {
             load: function () {
-              // set up the updating of the chart on each sample
               let series = this.series[0];
-              socket.on("order_data", function (samples) {
+              socket.on("order_data", function (sample) {
                 //Update series
-                let data = [];
-                for (const sample of samples) {
-                  data.push([sample.keyword, sample.count]);
+                const currentTime = new Date().getTime();
+                if (
+                  new Date(sample.timestamp).getTime() + timeWindow >=
+                  currentTime
+                ) {
+                  series.addPoint(
+                    [currentTime, sample.count],
+                    true,
+                    false,
+                    true
+                  );
                 }
-                series.setData(data);
               });
             },
           },
@@ -221,8 +257,10 @@
         },
         xAxis: {
           title: {
-            text: null,
+            text: "Time",
           },
+          type: "datetime",
+          tickPixelInterval: 30,
         },
         yAxis: {
           min: 0,
@@ -234,18 +272,21 @@
             overflow: "justify",
           },
         },
+        time: {
+          useUTC: false,
+        },
         legend: {
           enabled: false,
         },
         exporting: {
-          enabled: false,
+          enabled: true,
         },
         credits: {
           enabled: false,
         },
         series: [
           {
-            name: "Searches",
+            name: "Orders",
           },
         ],
       });
@@ -265,9 +306,15 @@
               socket.on("country_data", function (samples) {
                 //Update series
                 let data = [];
-                for (const sample of samples) {
-                  data.push([sample.country_code, sample.count]);
-                }
+                const currentTime = new Date().getTime();
+                samples.forEach(function (sample) {
+                  if (
+                    new Date(sample.timestamp).getTime() + timeWindow >=
+                    currentTime
+                  ) {
+                    data.push([sample.country_code, sample.count]);
+                  }
+                });
                 series.setData(data, true, true, true);
               });
             },

@@ -71,9 +71,9 @@ object KafkaSpark {
     val cluster = Cluster.builder().addContactPoint("127.0.0.1").build()
     val session = cluster.connect()
     session.execute("CREATE KEYSPACE IF NOT EXISTS access_log WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
-    session.execute("CREATE TABLE IF NOT EXISTS access_log.searches (keyword text PRIMARY KEY, count float);")
-    session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (product text PRIMARY KEY, count float);")
-    session.execute("CREATE TABLE IF NOT EXISTS access_log.countries (country_code text PRIMARY KEY, count float);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.searches (keyword text, timestamp timestamp, count int, PRIMARY KEY (keyword, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (id int, timestamp timestamp, count int, PRIMARY KEY (id, timestamp));")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.countries (country_code text, timestamp timestamp, count int, PRIMARY KEY (country_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.requests (response_code int, timestamp timestamp, count int, PRIMARY KEY (response_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
 
     // Need minimum of 2 threads, one for reading input and one for processing
@@ -96,39 +96,29 @@ object KafkaSpark {
     val accessLogs = parsedLogs.filter(x => x._2 == 1).map(x => x._1.left.get) // Filter out any logs which may have not been correctly parsed
     
 
+    // Filter out search words and orders from the access logs
     val searches = accessLogs.filter(x => x.endpoint.contains("/store/search?name="))
     val keywords = searches.map(x => (x.endpoint.split("=")(1), 1))
-    
     val orderRequests = accessLogs.filter(x => x.endpoint.contains("/store/checkout"))
-    val orders = orderRequests.map(x => (parseQueryParam(ITEMID_PATTERN, x.endpoint), 1))
+    
+    // Count occurences of search words and number of orders for the time window
+    val keywordsCount = keywords.reduceByKeyAndWindow((a:Int, b:Int) => (a + b) , Seconds(10), Seconds(10))
+    val orderCount = orderRequests.countByWindow(Seconds(10), Seconds(10))
 
-    val countries = accessLogs.map(x => (x.countryCode, 1))
-    val requestCount = accessLogs.map(x => (x.responseCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b) , Seconds(10), Seconds(10))
+    // Count number of requests by response code and country code for the time window
+    val countriesCount = accessLogs.map(x => (x.countryCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(10), Seconds(10))
+    val requestCount = accessLogs.map(x => (x.responseCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(10), Seconds(10))
+    
+    // Set timestamps
     val timestampedRequestCount = requestCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
-    timestampedRequestCount.print()
-
-    // measure the number of orders for each key in a stateful manner
-    def mapFunc(key: String, value: Option[Int], state: State[Int]): (String, Int) = {
-      if (state.exists) {
-        val oldState = state.get()
-        val newState = (oldState + value.get)
-        state.update(newState)
-        return (key, newState)
-      } else {
-        val newState = value.get
-        state.update(newState)
-        return (key, newState)
-      }
-    }
-
-    val searchStateDstream = keywords.mapWithState(StateSpec.function(mapFunc _))
-    val orderStateDstream = orders.mapWithState(StateSpec.function(mapFunc _))
-    val countryStateDstream = countries.mapWithState(StateSpec.function(mapFunc _))
+    val timestampedCountriesCount = countriesCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
+    val timestampedKeywordsCount = keywordsCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
+    val timestampedOrdersCount = orderCount.map(x => (0, LocalDateTime.now().toString, x))
 
     timestampedRequestCount.saveToCassandra("access_log", "requests", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
-    searchStateDstream.saveToCassandra("access_log", "searches", SomeColumns("keyword", "count"))
-    orderStateDstream.saveToCassandra("access_log", "orders", SomeColumns("product", "count"))
-    countryStateDstream.saveToCassandra("access_log", "countries", SomeColumns("country_code", "count"))
+    timestampedOrdersCount.saveToCassandra("access_log", "orders", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
+    timestampedKeywordsCount.saveToCassandra("access_log", "searches", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
+    timestampedCountriesCount.saveToCassandra("access_log", "countries", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
 
     streamingContext.start()
     streamingContext.awaitTermination()

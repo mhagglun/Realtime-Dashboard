@@ -34,21 +34,21 @@ cassandraClient
   )
   .then(() =>
     cassandraClient.execute(
-      `CREATE TABLE IF NOT EXISTS access_log.searches (keyword text PRIMARY KEY, count float);`
+      `CREATE TABLE IF NOT EXISTS access_log.searches (keyword text, timestamp timestamp, count int, PRIMARY KEY (keyword, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);`
     )
   )
   .then(() =>
     cassandraClient.execute(
-      "CREATE TABLE IF NOT EXISTS access_log.orders (word text PRIMARY KEY, count float);"
+      `CREATE TABLE IF NOT EXISTS access_log.orders (id int, timestamp timestamp, count int, PRIMARY KEY (id, timestamp));`
     )
   .then(() =>
     cassandraClient.execute(
-      `CREATE TABLE IF NOT EXISTS access_log.countries (country_code text PRIMARY KEY, count float);`
+      `CREATE TABLE IF NOT EXISTS access_log.countries (country_code text, timestamp timestamp, count int, PRIMARY KEY (country_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);`
     )
   )
   .then(() =>
     cassandraClient.execute(
-      `CREATE TABLE IF NOT EXISTS access_log.requests (timestamp timestamp PRIMARY KEY, count float);`
+      `CREATE TABLE IF NOT EXISTS access_log.requests (response_code int, timestamp timestamp, count int, PRIMARY KEY (response_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);`
     )
   )
 );
@@ -67,7 +67,10 @@ setInterval(function () {
     cassandraClient.execute(
       "SELECT * FROM access_log.searches;",
       (err, result) => {
-        if (err) return;
+        if (err) {
+          console.log(err);
+          return;
+        }
         io.emit("search_data", result.rows);
       }
     );
@@ -78,10 +81,13 @@ setInterval(function () {
 setInterval(function () {
   if (io.engine.clientsCount > 0) {
     cassandraClient.execute(
-      "SELECT * FROM access_log.orders;",
+      "SELECT * FROM access_log.orders WHERE id = 0 ORDER BY timestamp DESC LIMIT 1;",
       (err, result) => {
-        if (err) return;
-        io.emit("order_data", result.rows);
+        if (err) {
+          console.log(err);
+          return;
+        }
+        io.emit("order_data", result.rows[0]);
       }
     );
   }
@@ -91,9 +97,12 @@ setInterval(function () {
 setInterval(function () {
   if (io.engine.clientsCount > 0) {
     cassandraClient.execute(
-      "SELECT * FROM access_log.countries;",
+      "SELECT max(timestamp) AS timestamp, country_code, count FROM access_log.countries GROUP BY country_code;",
       (err, result) => {
-        if (err) return;
+        if (err) {
+          console.log(err);
+          return;
+        }
         io.emit("country_data", result.rows);
       }
     );
