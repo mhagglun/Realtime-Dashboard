@@ -3,6 +3,7 @@ const http = require("http").Server(app);
 const io = require("socket.io")(http);
 const cassandra = require("cassandra-driver");
 const port = 8080;
+const refreshRate = 10000;
 
 app.get("/", function (req, res) {
   res.sendFile("index.html", { root: "." });
@@ -45,18 +46,20 @@ cassandraClient
       `CREATE TABLE IF NOT EXISTS access_log.countries (country_code text PRIMARY KEY, count float);`
     )
   )
+  .then(() =>
+    cassandraClient.execute(
+      `CREATE TABLE IF NOT EXISTS access_log.requests (timestamp timestamp PRIMARY KEY, count float);`
+    )
+  )
 );
 
 io.sockets.on("connection", function (socket) {
-  console.log("User connected");
+  console.log("user connected");
   socket.on("disconnect", function () {
     console.log("user disconnected");
   });
 });
 
-
-// TODO: Replace by reading data from output kafka topic instead,
-// Only load data directly from db when instantiating view
 
 // Continiously update chart.
 setInterval(function () {
@@ -69,7 +72,7 @@ setInterval(function () {
       }
     );
   }
-}, 1000); //update every sec.
+}, refreshRate);
 
 // Continiously update chart.
 setInterval(function () {
@@ -82,7 +85,7 @@ setInterval(function () {
       }
     );
   }
-}, 1000); //update every sec.
+}, refreshRate);
 
 // Continiously update chart.
 setInterval(function () {
@@ -95,4 +98,17 @@ setInterval(function () {
       }
     );
   }
-}, 1000); //update every sec.
+}, refreshRate);
+
+// Continiously update chart.
+setInterval(function () {
+  if (io.engine.clientsCount > 0) {
+    cassandraClient.execute(
+      "SELECT * FROM access_log.requests WHERE id = 0 ORDER BY timestamp DESC LIMIT 1;",
+      (err, result) => {
+        if (err) return;
+        io.emit("requests_count_data", result.rows[0]);
+      }
+    );
+  }
+}, refreshRate);

@@ -30,6 +30,11 @@
   </head>
   <body>
     <div
+      id="requests_chart"
+      style="min-width: 400px; height: 500px; margin: 0 auto"
+    ></div>
+
+    <div
       id="world_map_container"
       style="min-width: 400px; height: 500px; margin: 0 auto"
     ></div>
@@ -45,7 +50,90 @@
     ></div>
 
     <script>
-      // Instantiate the chart object which plots the samples.
+      var socket = io.connect("http://localhost:8080");
+
+      var requestsChart = new Highcharts.chart("requests_chart", {
+        chart: {
+          type: "spline",
+          animation: Highcharts.svg, // don't animate in old IE
+          marginRight: 10,
+          events: {
+            load: function () {
+              let series = this.series[0];
+              socket.on("requests_count_data", function (data) {
+                series.addPoint(
+                  { x: new Date(data.timestamp).getTime(), y: data.count },
+                  true,
+                  false
+                );
+              });
+            },
+          },
+        },
+
+        time: {
+          useUTC: false,
+        },
+
+        title: {
+          text: "Request per minute",
+        },
+
+        accessibility: {
+          announceNewData: {
+            enabled: true,
+            minAnnounceInterval: 15000,
+            announcementFormatter: function (allSeries, newSeries, newPoint) {
+              if (newPoint) {
+                return "New point added. Value: " + newPoint.y;
+              }
+              return false;
+            },
+          },
+        },
+
+        xAxis: {
+          type: "datetime",
+          tickPixelInterval: 30,
+        },
+
+        yAxis: {
+          title: {
+            text: "Requests",
+          },
+          plotLines: [
+            {
+              value: 0,
+              width: 1,
+              color: "#808080",
+            },
+          ],
+        },
+
+        tooltip: {
+          headerFormat: "<b>{series.name}</b><br/>",
+          pointFormat: "{point.x:%Y-%m-%d %H:%M:%S}<br/>{point.y:.2f}",
+        },
+
+        legend: {
+          enabled: false,
+        },
+
+        exporting: {
+          enabled: false,
+        },
+        series: [
+          {
+            name: "Request count",
+            data: [
+              { x: "2020-10-22T12:46:05.077Z", y: 7 },
+              { x: "2020-10-22T12:48:05.077Z", y: 9 },
+            ],
+            pointInterval: 3600,
+          },
+        ],
+      });
+
       var searchesGraph = new Highcharts.chart("searches_container", {
         chart: {
           type: "bar",
@@ -54,9 +142,7 @@
           events: {
             load: function () {
               // set up the updating of the chart on each sample
-              var series = this.series[0];
-              var socket = io.connect("http://localhost:8080");
-
+              let series = this.series[0];
               socket.on("search_data", function (samples) {
                 //Update series
                 let data = [];
@@ -117,9 +203,7 @@
           events: {
             load: function () {
               // set up the updating of the chart on each sample
-              var series = this.series[0];
-              var socket = io.connect("http://localhost:8080");
-
+              let series = this.series[0];
               socket.on("order_data", function (samples) {
                 //Update series
                 let data = [];
@@ -162,29 +246,36 @@
         ],
       });
 
-      var worldmapGraph = new Highcharts.chart("world_map_container", {
+      var worldmapGraph = new Highcharts.mapChart("world_map_container", {
         chart: {
-          type: 'map',
+          borderWidth: 1,
+          map: "custom/world",
+          animation: {
+            duration: 2500,
+            easing: 'easeOutBounce'
+          },
           events: {
             load: function () {
               // set up the updating of the chart on each sample
-              var series = this.series[0];
-              var socket = io.connect("http://localhost:8080");
-
+              let series = this.series[1];
               socket.on("country_data", function (samples) {
                 //Update series
                 let data = [];
                 for (const sample of samples) {
                   data.push([sample.country_code, sample.count]);
                 }
-                series.setData(data);
+                series.setData(data, true, true, true);
               });
             },
           },
         },
 
         title: {
-          text: "Visitors by country",
+          text: "Traffic by country",
+        },
+
+        legend: {
+          enabled: false,
         },
 
         mapNavigation: {
@@ -194,19 +285,22 @@
           },
         },
 
-        colorAxis: {
-          min: 0,
-        },
-
         series: [
           {
-            data: [],
-            mapData: Highcharts.maps["custom/world"],
-            joinBy: "country_code",
-            name: "Visitors",
-            dataLabels: {
-              enabled: true,
-              format: "{point.name}",
+            name: "Countries",
+            mapData:  Highcharts.maps['custom/world'],
+            joinBy: ['hc-key', 'hc-key'],  
+            color: "#E0E0E0",
+            enableMouseTracking: false,
+          },
+          {
+            type: "mapbubble",
+            joinBy: ['hc-key', 'hc-key'],
+            data: [{"hc-key": "se", "z": 5}],
+            minSize: 1,
+            maxSize: "5%",
+            tooltip: {
+              pointFormat: "{point.properties.hc-a2}: {point.z} requests",
             },
           },
         ],
