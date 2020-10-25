@@ -3,7 +3,7 @@
 The real-time dashboard is implemented using:
 * Apache Kafka
 * Apache Spark Streaming
-* Producer and Consumer writting in Scala and Python
+* Producer and Consumer written in Scala and Python
 * Backend: Node.js, Cassandra, socket.io
 * Frontend: HTML, Highchart.js
 
