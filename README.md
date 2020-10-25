@@ -1,4 +1,15 @@
-# Usage
+# Real-time Dashboard
+## Architecture
+The real-time dashboard is implemented using:
+* Apache Kafka
+* Apache Spark Streaming
+* Producer and Consumer writting in Scala and Python
+* Backend: Node.js, Cassandra, socket.io
+* Frontend: HTML, Highchart.js
+
+![](figures/architecture.png)
+
+## Usage
 
 Start Zookeeper
 
@@ -31,9 +42,9 @@ python producer.py --topic access-log
 ```
 
 Start the consumer to read and process the messages
-
+Navigate to src/consumer and run
 ```bash
-python consumer.py
+sbt run
 ```
 
 Run the backend server via
@@ -43,3 +54,6 @@ node index.js
 ```
 
 And view the dashboard [here](http://localhost:8080/)
+
+## Screenshot
+![](figures/dashboard.png)
