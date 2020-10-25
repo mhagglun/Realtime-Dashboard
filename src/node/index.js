@@ -104,10 +104,13 @@ setInterval(function () {
 setInterval(function () {
   if (io.engine.clientsCount > 0) {
     cassandraClient.execute(
-      "SELECT * FROM access_log.requests WHERE id = 0 ORDER BY timestamp DESC LIMIT 1;",
+      "SELECT max(timestamp) AS timestamp, response_code, count FROM access_log.requests GROUP BY response_code;",
       (err, result) => {
-        if (err) return;
-        io.emit("requests_count_data", result.rows[0]);
+        if (err) {
+          console.log(err);
+          return;
+        }
+        io.emit("requests_count_data", result.rows);
       }
     );
   }

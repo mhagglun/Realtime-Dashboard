@@ -74,7 +74,7 @@ object KafkaSpark {
     session.execute("CREATE TABLE IF NOT EXISTS access_log.searches (keyword text PRIMARY KEY, count float);")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (product text PRIMARY KEY, count float);")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.countries (country_code text PRIMARY KEY, count float);")
-    session.execute("CREATE TABLE IF NOT EXISTS access_log.requests (id int, timestamp timestamp, count float, PRIMARY KEY (id, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.requests (response_code int, timestamp timestamp, count int, PRIMARY KEY (response_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
 
     // Need minimum of 2 threads, one for reading input and one for processing
     val sparkConf = new SparkConf().setAppName("DashboardConsumer").setMaster("local[2]")
@@ -103,8 +103,9 @@ object KafkaSpark {
     val orders = orderRequests.map(x => (parseQueryParam(ITEMID_PATTERN, x.endpoint), 1))
 
     val countries = accessLogs.map(x => (x.countryCode, 1))
-    val requestCount = accessLogs.countByWindow(Seconds(10), Seconds(10))
-    val timestampedRequestCount = requestCount.map(x => (0, LocalDateTime.now().toString, x))
+    val requestCount = accessLogs.map(x => (x.responseCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b) , Seconds(10), Seconds(10))
+    val timestampedRequestCount = requestCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
+    timestampedRequestCount.print()
 
     // measure the number of orders for each key in a stateful manner
     def mapFunc(key: String, value: Option[Int], state: State[Int]): (String, Int) = {

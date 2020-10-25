@@ -54,81 +54,79 @@
 
       var requestsChart = new Highcharts.chart("requests_chart", {
         chart: {
-          type: "spline",
-          animation: Highcharts.svg, // don't animate in old IE
+          zoomType: "x",
           marginRight: 10,
+          type: "column",
           events: {
             load: function () {
-              let series = this.series[0];
+              let series = this.series;
               socket.on("requests_count_data", function (data) {
-                series.addPoint(
-                  { x: new Date(data.timestamp).getTime(), y: data.count },
-                  true,
-                  false
-                );
+                const currentTime = new Date().getTime();
+                series.forEach(function(serie) {
+                   data.forEach(function(item) {
+                     if (item.response_code.toString() == serie.name) {
+                      let count = ( new Date(item.timestamp).getTime() + 10000 >= currentTime) ? item.count : 0;
+                      serie.addPoint(
+                        [currentTime, count],
+                        true,
+                        false
+                        );
+                      }
+                    })
+                });
               });
             },
           },
         },
-
-        time: {
-          useUTC: false,
-        },
-
         title: {
-          text: "Request per minute",
+          text: "Requests per minute",
         },
-
-        accessibility: {
-          announceNewData: {
-            enabled: true,
-            minAnnounceInterval: 15000,
-            announcementFormatter: function (allSeries, newSeries, newPoint) {
-              if (newPoint) {
-                return "New point added. Value: " + newPoint.y;
-              }
-              return false;
-            },
-          },
-        },
-
         xAxis: {
+          title: {
+            text: "Date",
+          },
           type: "datetime",
           tickPixelInterval: 30,
         },
-
         yAxis: {
+          min: 0,
           title: {
             text: "Requests",
           },
-          plotLines: [
-            {
-              value: 0,
-              width: 1,
-              color: "#808080",
-            },
-          ],
         },
-
-        tooltip: {
-          headerFormat: "<b>{series.name}</b><br/>",
-          pointFormat: "{point.x:%Y-%m-%d %H:%M:%S}<br/>{point.y:.2f}",
-        },
-
-        legend: {
+        credits: {
           enabled: false,
         },
-
+        time: {
+          useUTC: false,
+        },
+        plotOptions: {
+          series: {
+            stacking: "normal",
+          },
+        },
         exporting: {
-          enabled: false,
+          enabled: true
         },
         series: [
           {
-            name: "Request count",
-            data: [
-              { x: "2020-10-22T12:46:05.077Z", y: 7 },
-              { x: "2020-10-22T12:48:05.077Z", y: 9 },
-            ],
+            name: "500",
+            color: "#FF0000",
+            pointInterval: 3600,
+          },
+          {
+            name: "404",
+            color: "#884EA0",
+            pointInterval: 3600,
+          },
+          {
+            name: "403",
+            color: "#D4AC0D",
+            pointInterval: 3600,
+          },
+          {
+            name: "200",
+            color: "#28B463",
             pointInterval: 3600,
           },
         ],
@@ -188,6 +186,9 @@
         exporting: {
           enabled: false,
         },
+        credits: {
+          enabled: false,
+        },
         series: [
           {
             name: "Searches",
@@ -239,6 +240,9 @@
         exporting: {
           enabled: false,
         },
+        credits: {
+          enabled: false,
+        },
         series: [
           {
             name: "Searches",
@@ -252,7 +256,7 @@
           map: "custom/world",
           animation: {
             duration: 2500,
-            easing: 'easeOutBounce'
+            easing: "easeOutBounce",
           },
           events: {
             load: function () {
@@ -277,7 +281,9 @@
         legend: {
           enabled: false,
         },
-
+        credits: {
+          enabled: false,
+        },
         mapNavigation: {
           enabled: true,
           buttonOptions: {
@@ -288,15 +294,15 @@
         series: [
           {
             name: "Countries",
-            mapData:  Highcharts.maps['custom/world'],
-            joinBy: ['hc-key', 'hc-key'],  
+            mapData: Highcharts.maps["custom/world"],
+            joinBy: ["hc-key", "hc-key"],
             color: "#E0E0E0",
             enableMouseTracking: false,
           },
           {
             type: "mapbubble",
-            joinBy: ['hc-key', 'hc-key'],
-            data: [{"hc-key": "se", "z": 5}],
+            joinBy: ["hc-key", "hc-key"],
+            data: [],
             minSize: 1,
             maxSize: "5%",
             tooltip: {
