@@ -75,7 +75,7 @@ io.sockets.on("connection", function (socket) {
 setInterval(function () {
   // if (io.engine.clientsCount > 0) {
   cassandraClient.execute(
-    "SELECT * FROM access_log.searches;",
+    "SELECT max(timestamp) AS timestamp, keyword, count FROM access_log.searches GROUP BY keyword;",
     (err, result) => {
       if (err) {
         console.log(err);
