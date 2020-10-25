@@ -67,7 +67,7 @@
                         currentTime
                           ? sample.count
                           : 0;
-                      serie.addPoint([currentTime, count], false, true);
+                      serie.addPoint([currentTime, count], false, false);
                     }
                   });
                 });
@@ -149,13 +149,13 @@
                 const currentTime = new Date().getTime();
                 series.forEach(function (serie) {
                   data.forEach(function (sample) {
-                    if (sample.keyword.toString() == serie.name) {
+                    if (sample.keyword == serie.name) {
                       let count =
                         new Date(sample.timestamp).getTime() + timeWindow >=
                         currentTime
                           ? sample.count
                           : 0;
-                      serie.addPoint([currentTime, count], false, true);
+                      serie.addPoint([currentTime, count], false, false);
                     }
                   });
                 });
@@ -255,7 +255,7 @@
                   series.addPoint(
                     [currentTime, sample.count],
                     true,
-                    true,
+                    false,
                     true
                   );
                 }
