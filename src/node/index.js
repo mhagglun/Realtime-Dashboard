@@ -3,7 +3,7 @@ const http = require("http").Server(app);
 const io = require("socket.io")(http);
 const cassandra = require("cassandra-driver");
 const port = 8080;
-const refreshRate = 10000;
+const refreshRate = 60000;
 
 app.get("/", function (req, res) {
   res.sendFile("index.html", { root: "." });
@@ -51,6 +51,16 @@ cassandraClient
       `CREATE TABLE IF NOT EXISTS access_log.requests (response_code int, timestamp timestamp, count int, PRIMARY KEY (response_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);`
     )
   )
+  .then(() =>
+    cassandraClient.execute(
+      `CREATE TABLE IF NOT EXISTS access_log.os (os text, timestamp timestamp, count int, PRIMARY KEY (os, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);`
+    )
+  )
+  .then(() =>
+    cassandraClient.execute(
+      `CREATE TABLE IF NOT EXISTS access_log.browsers (browser text, timestamp timestamp, count int, PRIMARY KEY (browser, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);`
+    )
+  )
 );
 
 io.sockets.on("connection", function (socket) {
@@ -63,15 +73,80 @@ io.sockets.on("connection", function (socket) {
 
 // Continiously update chart.
 setInterval(function () {
+  // if (io.engine.clientsCount > 0) {
+  cassandraClient.execute(
+    "SELECT * FROM access_log.searches;",
+    (err, result) => {
+      if (err) {
+        console.log(err);
+        return;
+      }
+      io.emit("search_data", result.rows);
+    }
+  );
+  // }
+}, refreshRate);
+
+// Continiously update chart.
+setInterval(function () {
+  // if (io.engine.clientsCount > 0) {
+  cassandraClient.execute(
+    "SELECT * FROM access_log.orders WHERE id = 0 ORDER BY timestamp DESC LIMIT 1;",
+    (err, result) => {
+      if (err) {
+        console.log(err);
+        return;
+      }
+      io.emit("order_data", result.rows[0]);
+    }
+  );
+  // }
+}, refreshRate);
+
+// Continiously update chart.
+setInterval(function () {
+  // if (io.engine.clientsCount > 0) {
+  cassandraClient.execute(
+    "SELECT max(timestamp) AS timestamp, country_code, count FROM access_log.countries GROUP BY country_code;",
+    (err, result) => {
+      if (err) {
+        console.log(err);
+        return;
+      }
+      io.emit("country_data", result.rows);
+    }
+  );
+  // }
+}, refreshRate);
+
+// Continiously update chart.
+setInterval(function () {
+  // if (io.engine.clientsCount > 0) {
+  cassandraClient.execute(
+    "SELECT max(timestamp) AS timestamp, response_code, count FROM access_log.requests GROUP BY response_code;",
+    (err, result) => {
+      if (err) {
+        console.log(err);
+        return;
+      }
+      io.emit("requests_count_data", result.rows);
+    }
+  );
+  // }
+}, refreshRate);
+
+
+// Continiously update chart.
+setInterval(function () {
   if (io.engine.clientsCount > 0) {
     cassandraClient.execute(
-      "SELECT * FROM access_log.searches;",
+      "SELECT max(timestamp) AS timestamp, os, count FROM access_log.os GROUP BY os;",
       (err, result) => {
         if (err) {
           console.log(err);
           return;
         }
-        io.emit("search_data", result.rows);
+        io.emit("os_data", result.rows);
       }
     );
   }
@@ -81,45 +156,13 @@ setInterval(function () {
 setInterval(function () {
   if (io.engine.clientsCount > 0) {
     cassandraClient.execute(
-      "SELECT * FROM access_log.orders WHERE id = 0 ORDER BY timestamp DESC LIMIT 1;",
+      "SELECT max(timestamp) AS timestamp, browser, count FROM access_log.browsers GROUP BY browser;",
       (err, result) => {
         if (err) {
           console.log(err);
           return;
         }
-        io.emit("order_data", result.rows[0]);
-      }
-    );
-  }
-}, refreshRate);
-
-// Continiously update chart.
-setInterval(function () {
-  if (io.engine.clientsCount > 0) {
-    cassandraClient.execute(
-      "SELECT max(timestamp) AS timestamp, country_code, count FROM access_log.countries GROUP BY country_code;",
-      (err, result) => {
-        if (err) {
-          console.log(err);
-          return;
-        }
-        io.emit("country_data", result.rows);
-      }
-    );
-  }
-}, refreshRate);
-
-// Continiously update chart.
-setInterval(function () {
-  if (io.engine.clientsCount > 0) {
-    cassandraClient.execute(
-      "SELECT max(timestamp) AS timestamp, response_code, count FROM access_log.requests GROUP BY response_code;",
-      (err, result) => {
-        if (err) {
-          console.log(err);
-          return;
-        }
-        io.emit("requests_count_data", result.rows);
+        io.emit("browser_data", result.rows);
       }
     );
   }

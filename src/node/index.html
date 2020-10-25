@@ -29,33 +29,29 @@
     <script src="https://code.highcharts.com/mapdata/custom/world.js"></script>
   </head>
   <body>
-    <div
-      id="requests_chart"
-      style="min-width: 400px; height: 500px; margin: 0 auto"
-    ></div>
+    <div>
+      <div id="requests_chart" style="float: left; width: 50%"></div>
+      <div id="world_map_container" style="float: right; width: 50%"></div>
+    </div>
 
-    <div
-      id="world_map_container"
-      style="min-width: 400px; height: 500px; margin: 0 auto"
-    ></div>
+    <div>
+      <div id="searches_container" style="float: left; width: 50%"></div>
+      <div id="orders_container" style="float: right; width: 50%"></div>
+    </div>
 
-    <div
-      id="searches_container"
-      style="min-width: 400px; height: 350px; margin: 0 auto"
-    ></div>
-
-    <div
-      id="orders_container"
-      style="min-width: 400px; height: 350px; margin: 0 auto"
-    ></div>
+    <div>
+      <div id="os_container" style="float: left; width: 50%"></div>
+      <div id="browsers_container" style="float: right; width: 50%"></div>
+    </div>
 
     <script>
-      var timeWindow = 10000;
+      var timeWindow = 60000;
       var socket = io.connect("http://localhost:8080");
 
       var requestsChart = new Highcharts.chart("requests_chart", {
         chart: {
           zoomType: "x",
+          borderWidth: 1,
           marginRight: 10,
           type: "column",
           events: {
@@ -71,10 +67,11 @@
                         currentTime
                           ? sample.count
                           : 0;
-                      serie.addPoint([currentTime, count], true, false);
+                      serie.addPoint([currentTime, count], false, true);
                     }
                   });
                 });
+                requestsChart.redraw();
               });
             },
           },
@@ -93,6 +90,12 @@
           min: 0,
           title: {
             text: "Requests",
+          },
+        },
+        legend: {
+          enabled: true,
+          title: {
+            text: "Response Code",
           },
         },
         credits: {
@@ -136,6 +139,7 @@
       var searchesGraph = new Highcharts.chart("searches_container", {
         chart: {
           zoomType: "x",
+          borderWidth: 1,
           marginRight: 10,
           type: "column",
           events: {
@@ -151,10 +155,11 @@
                         currentTime
                           ? sample.count
                           : 0;
-                      serie.addPoint([currentTime, count], true, false);
+                      serie.addPoint([currentTime, count], false, true);
                     }
                   });
                 });
+                searchesGraph.redraw();
               });
             },
           },
@@ -173,6 +178,12 @@
           min: 0,
           title: {
             text: "Number of searches per store item",
+          },
+        },
+        legend: {
+          enabled: true,
+          title: {
+            text: "Searched Keywords",
           },
         },
         credits: {
@@ -244,7 +255,7 @@
                   series.addPoint(
                     [currentTime, sample.count],
                     true,
-                    false,
+                    true,
                     true
                   );
                 }
@@ -315,14 +326,14 @@
                     data.push([sample.country_code, sample.count]);
                   }
                 });
-                series.setData(data, true, true, true);
+                series.setData(data, true, false, true);
               });
             },
           },
         },
 
         title: {
-          text: "Traffic by country",
+          text: "Visitors by country",
         },
 
         legend: {
@@ -350,11 +361,127 @@
             type: "mapbubble",
             joinBy: ["hc-key", "hc-key"],
             data: [],
-            minSize: 1,
+            minSize: 2,
             maxSize: "5%",
             tooltip: {
               pointFormat: "{point.properties.hc-a2}: {point.z} requests",
             },
+          },
+        ],
+      });
+
+      var osGraph = new Highcharts.chart("os_container", {
+        chart: {
+          plotBackgroundColor: null,
+          plotBorderWidth: null,
+          plotShadow: false,
+          type: "pie",
+          events: {
+            load: function () {
+              let series = this.series[0];
+              socket.on("os_data", function (samples) {
+                let data = [];
+                const currentTime = new Date().getTime();
+                samples.forEach(function (sample) {
+                  if (
+                    new Date(sample.timestamp).getTime() + timeWindow >=
+                    currentTime
+                  ) {
+                    data.push([sample.os, sample.count]);
+                  }
+                });
+                series.setData(data, true, false, true);
+              });
+            },
+          },
+        },
+        title: {
+          text: "Visitors by OS",
+        },
+        tooltip: {
+          pointFormat: "{series.name}: <b>{point.percentage:.1f}%</b>",
+        },
+        accessibility: {
+          point: {
+            valueSuffix: "%",
+          },
+        },
+        credits: {
+          enabled: false,
+        },
+        plotOptions: {
+          pie: {
+            allowPointSelect: true,
+            cursor: "pointer",
+            dataLabels: {
+              enabled: true,
+              format: "<b>{point.name}</b>: {point.percentage:.1f} %",
+            },
+          },
+        },
+        series: [
+          {
+            name: "OS",
+            colorByPoint: true,
+            data: [],
+          },
+        ],
+      });
+
+      var browsersGraph = new Highcharts.chart("browsers_container", {
+        chart: {
+          plotBackgroundColor: null,
+          plotBorderWidth: null,
+          plotShadow: false,
+          type: "pie",
+          events: {
+            load: function () {
+              let series = this.series[0];
+              socket.on("browser_data", function (samples) {
+                let data = [];
+                const currentTime = new Date().getTime();
+                samples.forEach(function (sample) {
+                  if (
+                    new Date(sample.timestamp).getTime() + timeWindow >=
+                    currentTime
+                  ) {
+                    data.push([sample.browser, sample.count]);
+                  }
+                });
+                series.setData(data, true, false, true);
+              });
+            },
+          },
+        },
+        title: {
+          text: "Visitors by Browser",
+        },
+        tooltip: {
+          pointFormat: "{series.name}: <b>{point.percentage:.1f}%</b>",
+        },
+        accessibility: {
+          point: {
+            valueSuffix: "%",
+          },
+        },
+        credits: {
+          enabled: false,
+        },
+        plotOptions: {
+          pie: {
+            allowPointSelect: true,
+            cursor: "pointer",
+            dataLabels: {
+              enabled: true,
+              format: "<b>{point.name}</b>: {point.percentage:.1f} %",
+            },
+          },
+        },
+        series: [
+          {
+            name: "Browser",
+            colorByPoint: true,
+            data: [],
           },
         ],
       });

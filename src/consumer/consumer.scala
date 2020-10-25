@@ -19,16 +19,20 @@ import com.datastax.driver.core.{Session, Cluster, Host, Metadata}
 import com.datastax.spark.connector.streaming._
 import com.datastax.spark.connector.writer.{TimestampOption, TTLOption, WriteConf}
 import org.apache.spark.rdd.RDD
+import org.uaparser.scala.Parser
 
 object KafkaSpark {
   
+  // Time window for processing
+  val TIME_WINDOW = 60
+
   val APACHE_ACCESS_LOG_PATTERN = """^(\S+) (\S+) (\S+) (\S+) \[([\w:/]+\s[+\-]\d{4})\] "(\S+)\s?(\S+)?\s?(\S+)?\" (\d{3}|-) (\d+|-)\s?"?([^"]*)"?\s?"?([^"]*)?"?$""".r
 
   val MONTH_MAP = Map("Jan" -> 1, "Feb" -> 2, "Mar" -> 3, "Apr" -> 4, "May" -> 5, "Jun" -> 6, "Jul" -> 7, "Aug" -> 8,
                       "Sep" -> 9, "Oct" -> 10, "Nov" -> 11, "Dec" -> 12)
 
-  val USERID_PATTERN = """userId=([^&#]*)"""
   val ITEMID_PATTERN = """itemId=([^&#]*)"""
+
 
   // Helper classes for parsing apache logs
   case class Cal(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int)
@@ -75,6 +79,8 @@ object KafkaSpark {
     session.execute("CREATE TABLE IF NOT EXISTS access_log.orders (id int, timestamp timestamp, count int, PRIMARY KEY (id, timestamp));")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.countries (country_code text, timestamp timestamp, count int, PRIMARY KEY (country_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
     session.execute("CREATE TABLE IF NOT EXISTS access_log.requests (response_code int, timestamp timestamp, count int, PRIMARY KEY (response_code, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.os (os text, timestamp timestamp, count int, PRIMARY KEY (os, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
+    session.execute("CREATE TABLE IF NOT EXISTS access_log.browsers (browser text, timestamp timestamp, count int, PRIMARY KEY (browser, timestamp)) WITH CLUSTERING ORDER BY (timestamp DESC);")
 
     // Need minimum of 2 threads, one for reading input and one for processing
     val sparkConf = new SparkConf().setAppName("DashboardConsumer").setMaster("local[2]")
@@ -102,24 +108,33 @@ object KafkaSpark {
     val orderRequests = accessLogs.filter(x => x.endpoint.contains("/store/checkout"))
     
     // Count occurences of search words and number of orders for the time window
-    val keywordsCount = keywords.reduceByKeyAndWindow((a:Int, b:Int) => (a + b) , Seconds(10), Seconds(10))
-    val orderCount = orderRequests.countByWindow(Seconds(10), Seconds(10))
+    val keywordsCount = keywords.reduceByKeyAndWindow((a:Int, b:Int) => (a + b) , Seconds(TIME_WINDOW), Seconds(TIME_WINDOW))
+    val orderCount = orderRequests.countByWindow(Seconds(TIME_WINDOW), Seconds(TIME_WINDOW))
 
     // Count number of requests by response code and country code for the time window
-    val countriesCount = accessLogs.map(x => (x.countryCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(10), Seconds(10))
-    val requestCount = accessLogs.map(x => (x.responseCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(10), Seconds(10))
+    val countriesCount = accessLogs.map(x => (x.countryCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(TIME_WINDOW), Seconds(TIME_WINDOW))
+    val requestCount = accessLogs.map(x => (x.responseCode, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(TIME_WINDOW), Seconds(TIME_WINDOW))
+    val browserCount = accessLogs.map(x => (Parser.default.parse(x.userAgent).userAgent
+    .family, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(TIME_WINDOW), Seconds(TIME_WINDOW))
+    val osCount = accessLogs.map(x => (Parser.default.parse(x.userAgent).os
+    .family, 1)).reduceByKeyAndWindow( (a:Int, b:Int) => (a + b), Seconds(TIME_WINDOW), Seconds(TIME_WINDOW))
     
+
     // Set timestamps
     val timestampedRequestCount = requestCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
+    val timestampedOSCount = osCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
+    val timestampedBrowserCount = browserCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
     val timestampedCountriesCount = countriesCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
     val timestampedKeywordsCount = keywordsCount.map(x => (x._1, LocalDateTime.now().toString, x._2))
     val timestampedOrdersCount = orderCount.map(x => (0, LocalDateTime.now().toString, x))
 
     timestampedRequestCount.saveToCassandra("access_log", "requests", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
-    timestampedOrdersCount.saveToCassandra("access_log", "orders", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
-    timestampedKeywordsCount.saveToCassandra("access_log", "searches", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
+    timestampedOSCount.saveToCassandra("access_log", "os", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
+    timestampedBrowserCount.saveToCassandra("access_log", "browsers", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
     timestampedCountriesCount.saveToCassandra("access_log", "countries", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
-
+    timestampedKeywordsCount.saveToCassandra("access_log", "searches", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
+    timestampedOrdersCount.saveToCassandra("access_log", "orders", writeConf = WriteConf(ttl = TTLOption.constant(3600)))
+  
     streamingContext.start()
     streamingContext.awaitTermination()
     session.close()
