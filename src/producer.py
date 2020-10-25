@@ -31,7 +31,7 @@ class Producer(threading.Thread):
 
         productNames = ["boots", "jacket", "beanie",
                         "pants", "dresses", "suits", "hoodies", "shirts"]
-        productIds = random.sample(range(1000, 15000), 8)
+        productIds = [139812, 9812, 89123, 503234, 88123, 42305, 32038, 1903]
 
         userAgents = [faker.firefox, faker.chrome, faker.safari,
                         faker.internet_explorer, faker.opera]
@@ -71,7 +71,7 @@ class Producer(threading.Thread):
             print(message)
 
             # time between each send action
-            # time.sleep(random.randint(1, 2))
+            time.sleep(random.randint(0, 2))
 
 
 def main():
